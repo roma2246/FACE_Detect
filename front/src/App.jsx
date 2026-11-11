@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { CLASSES, EMOTIONS, UNKNOWN } from './lib/emotions'
 import { useEmotionEngine } from './lib/useEmotionEngine'
 import TrainPanel from './TrainPanel'
+import ParticleBackground from './ParticleBackground'
+import ThemeToggle from './ThemeToggle'
 import './App.css'
 
 function emotionOf(face) {
@@ -76,7 +78,7 @@ function Probabilities({ face }) {
         <span className="current-emoji" key={em.emoji}>{em.emoji}</span>
         <div>
           <div className="muted small">Сейчас</div>
-          <div className="current-label" style={{ color: em.color }}>{face ? em.label : 'Нет лица'}</div>
+          <div className="current-label" style={face ? { '--c': em.color } : undefined}>{face ? em.label : 'Нет лица'}</div>
         </div>
       </div>
       <div className="bars">
@@ -139,15 +141,29 @@ function StatusDot({ ok, label }) {
   return <span className={`status ${ok ? 'ok' : 'bad'}`}><i />{label}</span>
 }
 
+function initialTheme() {
+  try {
+    const saved = localStorage.getItem('emocam-theme')
+    if (saved === 'light' || saved === 'dark') return saved
+  } catch { /* хранилище недоступно */ }
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
+
 export default function App() {
   const videoRef = useRef(null)
   const engine = useEmotionEngine(videoRef)
   const [showBox, setShowBox] = useState(true)
+  const [theme, setTheme] = useState(initialTheme)
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    try { localStorage.setItem('emocam-theme', theme) } catch { /* хранилище недоступно */ }
+  }, [theme])
   const main = engine.frame.faces[0]
   const { status } = engine
 
   return (
     <div className="app">
+      <ParticleBackground emotion={main?.stable != null ? CLASSES[main.stable] : null} theme={theme} />
       <header className="header">
         <div className="brand">
           <span className="logo">🎭</span>
@@ -156,12 +172,15 @@ export default function App() {
             <p className="muted small">Распознавание эмоций по лицу в реальном времени</p>
           </div>
         </div>
+        <div className="header-right">
         <div className="statuses">
           <StatusDot ok={status.camera === 'on'} label="Камера" />
           <StatusDot ok={status.detector === 'ready'} label="Детектор" />
           <StatusDot ok={status.socket === 'online' && status.model !== false} label={status.model === false ? 'Модель не обучена' : 'Модель'} />
           {engine.frame.finetuned && <span className="badge">дообучена на вас</span>}
           {status.mode === 'browser' && <span className="badge">в браузере</span>}
+        </div>
+          <ThemeToggle theme={theme} onChange={setTheme} />
         </div>
       </header>
 

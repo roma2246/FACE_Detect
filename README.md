@@ -9,6 +9,8 @@ ICT_ENDTERN/
 │   └── src/
 │       ├── App.jsx                видео, эмодзи над головой, вероятности, статистика
 │       ├── TrainPanel.jsx         запись своих снимков и запуск дообучения
+│       ├── ParticleBackground.jsx фон из частиц (three.js), форма волны зависит от эмоции
+│       ├── ThemeToggle.jsx        тумблер светлой/тёмной темы
 │       └── lib/
 │           ├── useEmotionEngine.js  камера, детектор лиц, WebSocket, сглаживание
 │           ├── faceCrop.js          вырезание лица -> 48x48 серое

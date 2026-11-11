@@ -1,15 +1,45 @@
 :root {
-  --bg: #0b0d14;
-  --panel: rgba(255, 255, 255, 0.045);
+  --bg: #07090f;
+  --panel: rgba(18, 22, 34, 0.62);
   --border: rgba(255, 255, 255, 0.09);
+  --soft: rgba(255, 255, 255, 0.05);
+  --soft-hover: rgba(255, 255, 255, 0.11);
+  --track: rgba(255, 255, 255, 0.08);
   --text: #e8eaf2;
   --muted: #8b90a5;
-  --accent: #7c5cff;
+  --accent: #4f8cff;
   --accent2: #22d3ee;
-  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --link: #9db8ff;
+  --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --label-mix: 100%; /* доля цвета эмоции в подписи */
+  --ok-bg: rgba(34, 197, 94, 0.1);
+  --err-bg: rgba(239, 68, 68, 0.12);
+  --err-text: #fca5a5;
+  color-scheme: dark;
+  font-family: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme='light'] {
+  --bg: #f3f5fa;
+  --panel: rgba(255, 255, 255, 0.72);
+  --border: rgba(15, 23, 42, 0.1);
+  --soft: rgba(15, 23, 42, 0.04);
+  --soft-hover: rgba(15, 23, 42, 0.09);
+  --track: rgba(15, 23, 42, 0.08);
+  --text: #131722;
+  --muted: #5d6478;
+  --accent: #2f6fed;
+  --accent2: #0891b2;
+  --link: #2f6fed;
+  --shadow: 0 16px 40px rgba(30, 41, 59, 0.14);
+  --label-mix: 42%;
+  --ok-bg: rgba(22, 163, 74, 0.12);
+  --err-bg: rgba(220, 38, 38, 0.1);
+  --err-text: #b91c1c;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -17,11 +47,13 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(900px 500px at 10% -10%, rgba(124, 92, 255, 0.18), transparent 60%),
-    radial-gradient(800px 500px at 110% 10%, rgba(34, 211, 238, 0.12), transparent 60%),
-    var(--bg);
+  background: var(--bg);
+  transition: background 0.4s, color 0.4s;
 }
 
-button { font: inherit; color: inherit; }
+button, input, select { font: inherit; color: inherit; }
 h1, h3 { margin: 0; }
+
+/* фон из частиц — под всем интерфейсом */
+.particles { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: -1; pointer-events: none; }
+#root { position: relative; z-index: 1; }
