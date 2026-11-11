@@ -1,0 +1,21 @@
+{
+  "name": "back",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "train": "cd ml && .venv/bin/python train.py",
+    "finetune": "cd ml && .venv/bin/python finetune.py"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "onnxruntime-node": "^1.31.1",
+    "ws": "^8.22.2"
+  }
+}

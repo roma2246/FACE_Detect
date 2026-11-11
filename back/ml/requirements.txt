@@ -1,0 +1,11 @@
+torch
+torchvision
+numpy
+matplotlib
+scikit-learn
+pillow
+pandas
+pyarrow
+huggingface_hub
+onnx
+onnxscript
