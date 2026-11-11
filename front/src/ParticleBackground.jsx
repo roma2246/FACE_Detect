@@ -12,7 +12,7 @@ const ROWS = 80
 const FORMS = ['calm', 'happy', 'sad', 'angry', 'surprise']
 const FORM_OF = { happy: 'happy', sad: 'sad', angry: 'angry', surprise: 'surprise', neutral: 'calm' }
 
-const IDLE_COLOR = { dark: '#8fb8ff', light: '#5b6b8c' }
+const IDLE_COLOR = { dark: '#b4b4bb', light: '#52525b' }
 
 const vertexShader = /* glsl */ `
   uniform float uTime;

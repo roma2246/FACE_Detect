@@ -77,8 +77,8 @@ function Probabilities({ face }) {
       <div className="current">
         <span className="current-emoji" key={em.emoji}>{em.emoji}</span>
         <div>
-          <div className="muted small">Сейчас</div>
-          <div className="current-label" style={face ? { '--c': em.color } : undefined}>{face ? em.label : 'Нет лица'}</div>
+          <div className="eyebrow">Сейчас</div>
+          <div className="current-label">{face ? em.label : 'Нет лица'}</div>
         </div>
       </div>
       <div className="bars">
@@ -86,10 +86,10 @@ function Probabilities({ face }) {
           const p = face?.avg ? face.avg[i] : 0
           const e = EMOTIONS[c]
           return (
-            <div key={c} className={`bar-row ${face?.stable === i ? 'active' : ''}`}>
+            <div key={c} className={`bar-row ${face?.stable === i ? 'active' : ''}`} style={{ '--c': e.color }}>
               <span className="bar-emoji">{e.emoji}</span>
               <span className="bar-name">{e.label}</span>
-              <div className="bar"><div className="bar-fill" style={{ width: `${p * 100}%`, background: e.color }} /></div>
+              <div className="bar"><div className="bar-fill" style={{ width: `${p * 100}%` }} /></div>
               <span className="bar-val">{Math.round(p * 100)}%</span>
             </div>
           )
@@ -166,11 +166,12 @@ export default function App() {
       <ParticleBackground emotion={main?.stable != null ? CLASSES[main.stable] : null} theme={theme} />
       <header className="header">
         <div className="brand">
-          <span className="logo">🎭</span>
-          <div>
-            <h1>EmoCam</h1>
-            <p className="muted small">Распознавание эмоций по лицу в реальном времени</p>
-          </div>
+          <span className="logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+              <path d="M8 9v1.5M16 9v1.5M7.5 14.5c1.2 1.6 2.7 2.4 4.5 2.4s3.3-.8 4.5-2.4" />
+            </svg>
+          </span>
+          <h1>EmoCam</h1>
         </div>
         <div className="header-right">
         <div className="statuses">
@@ -183,6 +184,11 @@ export default function App() {
           <ThemeToggle theme={theme} onChange={setTheme} />
         </div>
       </header>
+
+      <section className="intro">
+        <p className="lead">Покажите эмоцию в камеру — эмодзи появится над головой.</p>
+        <p className="muted">Пять эмоций в реальном времени. Видео не покидает ваш компьютер.</p>
+      </section>
 
       <main className="layout">
         <div className="left">

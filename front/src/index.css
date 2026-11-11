@@ -1,43 +1,46 @@
+/* Монохромная палитра: цвет в интерфейсе несут только эмоции. */
 :root {
-  --bg: #07090f;
-  --panel: rgba(18, 22, 34, 0.62);
-  --border: rgba(255, 255, 255, 0.09);
-  --soft: rgba(255, 255, 255, 0.05);
-  --soft-hover: rgba(255, 255, 255, 0.11);
-  --track: rgba(255, 255, 255, 0.08);
-  --text: #e8eaf2;
-  --muted: #8b90a5;
-  --accent: #4f8cff;
-  --accent2: #22d3ee;
-  --link: #9db8ff;
-  --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-  --label-mix: 100%; /* доля цвета эмоции в подписи */
-  --ok-bg: rgba(34, 197, 94, 0.1);
-  --err-bg: rgba(239, 68, 68, 0.12);
+  --bg: #0a0a0b;
+  --panel: rgba(17, 17, 19, 0.82);
+  --border: rgba(255, 255, 255, 0.1);
+  --soft: rgba(255, 255, 255, 0.07);
+  --soft-hover: rgba(255, 255, 255, 0.13);
+  --track: rgba(255, 255, 255, 0.1);
+  --text: #f4f4f5;
+  --muted: #8e8e93;
+  --ink: #f4f4f5;      /* заливка главных кнопок и выбранных чипов */
+  --on-ink: #0a0a0b;
+  --accent: #f4f4f5;
+  --link: #f4f4f5;
+  --shadow: none;
+  --ok-bg: rgba(255, 255, 255, 0.06);
+  --err-bg: rgba(239, 68, 68, 0.14);
   --err-text: #fca5a5;
+  --sans: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --serif: 'Playfair Display Variable', 'Playfair Display', Georgia, serif;
+  --mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
   color-scheme: dark;
-  font-family: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--sans);
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 
 :root[data-theme='light'] {
-  --bg: #f3f5fa;
-  --panel: rgba(255, 255, 255, 0.72);
-  --border: rgba(15, 23, 42, 0.1);
-  --soft: rgba(15, 23, 42, 0.04);
-  --soft-hover: rgba(15, 23, 42, 0.09);
-  --track: rgba(15, 23, 42, 0.08);
-  --text: #131722;
-  --muted: #5d6478;
-  --accent: #2f6fed;
-  --accent2: #0891b2;
-  --link: #2f6fed;
-  --shadow: 0 16px 40px rgba(30, 41, 59, 0.14);
-  --label-mix: 42%;
-  --ok-bg: rgba(22, 163, 74, 0.12);
-  --err-bg: rgba(220, 38, 38, 0.1);
+  --bg: #fafafa;
+  --panel: rgba(255, 255, 255, 0.86);
+  --border: rgba(10, 10, 11, 0.1);
+  --soft: rgba(10, 10, 11, 0.055);
+  --soft-hover: rgba(10, 10, 11, 0.1);
+  --track: rgba(10, 10, 11, 0.08);
+  --text: #0a0a0b;
+  --muted: #8a8a8e;
+  --ink: #0a0a0b;
+  --on-ink: #ffffff;
+  --accent: #0a0a0b;
+  --link: #0a0a0b;
+  --ok-bg: rgba(10, 10, 11, 0.045);
+  --err-bg: rgba(220, 38, 38, 0.08);
   --err-text: #b91c1c;
   color-scheme: light;
 }
@@ -52,7 +55,7 @@ body {
 }
 
 button, input, select { font: inherit; color: inherit; }
-h1, h3 { margin: 0; }
+h1, h3, p { margin: 0; }
 
 /* фон из частиц — под всем интерфейсом */
 .particles { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: -1; pointer-events: none; }
