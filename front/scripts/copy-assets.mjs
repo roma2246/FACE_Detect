@@ -16,6 +16,9 @@ for (const f of ['vision_wasm_internal.js', 'vision_wasm_internal.wasm']) {
 for (const f of ['ort-wasm-simd-threaded.wasm']) {
   copy(join(root, 'node_modules/onnxruntime-web/dist', f), join(root, 'public/ort', f))
 }
-const model = join(root, '../back/models/emotion_cnn.onnx')
-if (existsSync(model)) copy(model, join(root, 'public/models/emotion_cnn.onnx'))
+// Браузерная версия модели (логиты + признаки) и веса последнего слоя — см. back/ml/export_browser.py
+for (const f of ['emotion_cnn_web.onnx', 'emotion_head.json']) {
+  const src = join(root, '../back/models', f)
+  if (existsSync(src)) copy(src, join(root, 'public/models', f))
+}
 console.log('assets copied')

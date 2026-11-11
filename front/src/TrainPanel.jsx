@@ -1,7 +1,12 @@
 // Сбор собственного датасета (кадры по эмоциям и людям) и дообучение модели на нём.
+// mode="server"  — снимки и обучение на Node-бэкенде (PyTorch, дообучается вся сеть);
+// mode="browser" — бэкенда нет (Vercel): снимки лежат в IndexedDB, в браузере дообучается последний слой.
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { browserFinetune } from './lib/browserTrain'
 import { CLASSES, EMOTIONS } from './lib/emotions'
 import { grayToPng } from './lib/faceCrop'
+import { getCustomHead, setCustomHead } from './lib/localModel'
+import { addSession, clearSessions, sampleStats } from './lib/localStore'
 
 const SHOT_OPTIONS = [40, 80, 150]
 const INTERVAL = 120
@@ -17,7 +22,8 @@ async function api(path, opts = {}) {
   return data
 }
 
-export default function TrainPanel({ captureMainFace, hasFace }) {
+export default function TrainPanel({ captureMainFace, hasFace, mode = 'server' }) {
+  const browser = mode === 'browser'
   const [label, setLabel] = useState('happy')
   const [person, setPerson] = useState(() => {
     try { return localStorage.getItem('emocam-person') || '' } catch { return '' }
@@ -28,8 +34,12 @@ export default function TrainPanel({ captureMainFace, hasFace }) {
   const [job, setJob] = useState(null)
   const [msg, setMsg] = useState(null)
   const poll = useRef(0)
+  const [tuned, setTuned] = useState(() => !!getCustomHead()) // есть ли дообученный слой в этом браузере
 
-  const refresh = useCallback(() => api('/samples').then(setStats).catch(() => setStats(null)), [])
+  const refresh = useCallback(
+    () => (browser ? sampleStats() : api('/samples')).then(setStats).catch(() => setStats(null)),
+    [browser],
+  )
   useEffect(() => { refresh() }, [refresh])
 
   const pollJob = useCallback(() => {
@@ -44,7 +54,11 @@ export default function TrainPanel({ captureMainFace, hasFace }) {
     tick()
     poll.current = setInterval(tick, 800)
   }, [])
-  useEffect(() => { pollJob(); return () => clearInterval(poll.current) }, [pollJob])
+  useEffect(() => {
+    if (browser) return undefined
+    pollJob()
+    return () => clearInterval(poll.current)
+  }, [browser, pollJob])
 
   const record = async () => {
     setMsg(null)
@@ -52,17 +66,19 @@ export default function TrainPanel({ captureMainFace, hasFace }) {
       setRec({ phase: 'count', n: i })
       await new Promise((r) => setTimeout(r, 700))
     }
-    const images = []
-    for (let i = 0; i < shots * 3 && images.length < shots; i++) {
-      setRec({ phase: 'rec', n: images.length })
+    const grays = []
+    for (let i = 0; i < shots * 3 && grays.length < shots; i++) {
+      setRec({ phase: 'rec', n: grays.length })
       const g = captureMainFace()
-      if (g) images.push(grayToPng(g))
+      if (g) grays.push(g.slice())
       await new Promise((r) => setTimeout(r, INTERVAL))
     }
     setRec(null)
-    if (!images.length) return setMsg('Лицо не найдено — снимки не записаны.')
+    if (!grays.length) return setMsg('Лицо не найдено — снимки не записаны.')
     try {
-      const r = await api('/samples', { method: 'POST', body: { label, images, person } })
+      const r = browser
+        ? { saved: grays.length, stats: await addSession(label, person, grays) }
+        : await api('/samples', { method: 'POST', body: { label, images: grays.map(grayToPng), person } })
       setStats(r.stats)
       setMsg(`Сохранено ${r.saved} снимков «${EMOTIONS[label].label}». Для разнообразия меняйте наклон головы, расстояние и освещение.`)
     } catch (e) { setMsg(`Ошибка: ${e.message}`) }
@@ -70,6 +86,15 @@ export default function TrainPanel({ captureMainFace, hasFace }) {
 
   const finetune = async () => {
     setMsg(null)
+    if (browser) {
+      setJob({ running: true, log: [] })
+      try {
+        const result = await browserFinetune((e) => setJob({ running: true, log: [{ type: 'epoch', ...e }] }))
+        setJob({ running: false, result })
+        setTuned(true)
+      } catch (e) { setJob({ running: false, error: e.message }) }
+      return
+    }
     try {
       await api('/finetune', { method: 'POST', body: { epochs: 8 } })
       pollJob()
@@ -77,13 +102,19 @@ export default function TrainPanel({ captureMainFace, hasFace }) {
   }
 
   const reset = async () => {
-    await api('/model/reset', { method: 'POST' })
+    if (browser) {
+      setCustomHead(null)
+      setTuned(false)
+      setJob(null)
+    } else {
+      await api('/model/reset', { method: 'POST' })
+    }
     setMsg('Возвращена базовая модель.')
   }
 
   const clear = async () => {
     if (!confirm('Удалить все записанные снимки?')) return
-    setStats(await api('/samples', { method: 'DELETE' }))
+    setStats(browser ? await clearSessions() : await api('/samples', { method: 'DELETE' }))
   }
 
   const savePerson = (v) => {
@@ -96,6 +127,9 @@ export default function TrainPanel({ captureMainFace, hasFace }) {
   const res = job?.result
   const lastEpoch = job?.log?.filter((l) => l.type === 'epoch').at(-1)
   const busy = !!rec || job?.running
+  const classCount = stats ? CLASSES.filter((c) => stats.classes[c] > 0).length : 0
+  // В браузере учится только последний слой: с одной эмоцией он просто начнёт отвечать ею на всё
+  const canTrain = total >= 10 && (!browser || classCount >= 2)
 
   return (
     <section className="card">
@@ -127,7 +161,8 @@ export default function TrainPanel({ captureMainFace, hasFace }) {
             rec?.phase === 'rec' ? `Запись ${rec.n}/${shots}` :
               `● Записать «${EMOTIONS[label].label}»`}
         </button>
-        <button className="btn primary" onClick={finetune} disabled={busy || total < 10}>
+        <button className="btn primary" onClick={finetune} disabled={busy || !canTrain}
+          title={browser && total >= 10 && classCount < 2 ? 'Запишите хотя бы две разные эмоции' : undefined}>
           {job?.running ? 'Обучение…' : '🚀 Дообучить'}
         </button>
       </div>
@@ -135,7 +170,7 @@ export default function TrainPanel({ captureMainFace, hasFace }) {
       {total > 0 && (
         <div className="dataset-line muted small">
           <span>В датасете: <b>{total}</b> кадров · людей: <b>{peopleCount}</b> · записей: <b>{stats.sessions}</b></span>
-          <a className="link" href="/api/samples/export" download>скачать .zip</a>
+          {!browser && <a className="link" href="/api/samples/export" download>скачать .zip</a>}
         </div>
       )}
 
@@ -148,10 +183,24 @@ export default function TrainPanel({ captureMainFace, hasFace }) {
       {res && !job.running && (
         <div className="result">
           ✅ Готово. {res.held_out ? `На ${res.n_test} отложенных своих кадрах (в обучении не участвовали)` : 'На своих кадрах'}:{' '}
-          {Math.round(res.base_custom_acc * 100)}% → <b>{Math.round(res.custom_acc * 100)}%</b>,
-          на общем тесте: {Math.round(res.base_test_acc * 100)}% → {Math.round(res.test_acc * 100)}%
+          {Math.round(res.base_custom_acc * 100)}% → <b>{Math.round(res.custom_acc * 100)}%</b>
+          {browser
+            ? '. На общем тесте в браузере не проверяется.'
+            : `, на общем тесте: ${Math.round(res.base_test_acc * 100)}% → ${Math.round(res.test_acc * 100)}%`}
           <button className="link" onClick={reset}>вернуть базовую</button>
         </div>
+      )}
+      {browser && tuned && !res && !job?.running && (
+        <div className="result">
+          Сейчас работает слой, дообученный в этом браузере.
+          <button className="link" onClick={reset}>вернуть базовую</button>
+        </div>
+      )}
+      {browser && (
+        <p className="muted small" style={{ margin: '12px 0 0' }}>
+          Режим без сервера: снимки хранятся только в этом браузере, дообучается последний слой сети.
+          Полное дообучение всей сети и выгрузка датасета — при локальном запуске с бэкендом.
+        </p>
       )}
       {job?.error && !job.running && <div className="result error">⚠️ {job.error}</div>}
       {msg && <div className="result">{msg}</div>}

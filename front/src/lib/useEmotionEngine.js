@@ -1,12 +1,15 @@
 // Камера + детекция лиц (MediaPipe) + классификация эмоций + сглаживание.
 // Эмоции считает Node-бэкенд (WebSocket); если он недоступен — модель запускается прямо в браузере.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FaceDetector, FilesetResolver } from '@mediapipe/tasks-vision'
+import { FaceDetector, FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision'
 import { CONFIDENCE_THRESHOLD, SMOOTH_WINDOW, argmax, average } from './emotions'
 import { cropGray } from './faceCrop'
-import { loadLocalModel, predictLocal } from './localModel'
+import { newHandState, rpsShape, updateGesture } from './gestures'
+import { getCustomHead, loadLocalModel, predictLocal } from './localModel'
 
 const MAX_FACES = 4
+const MAX_HANDS = 2
+const HAND_EVERY = 2 // руки ищем через кадр — этого хватает, а FPS почти не падает
 
 // Только для разработки: ?demo=/face.png подставляет картинку вместо камеры (проверка без веб-камеры).
 const demoUrl = import.meta.env.DEV ? new URLSearchParams(location.search).get('demo') : null
@@ -20,7 +23,20 @@ async function demoStream(url) {
   c.height = 720
   const g = c.getContext('2d')
   const w = (1100 * img.naturalWidth) / img.naturalHeight
-  const draw = () => { g.fillStyle = '#333'; g.fillRect(0, 0, 1280, 720); g.drawImage(img, 640 - w / 2, 20, w, 1100) }
+  const params = new URLSearchParams(location.search)
+  const fit = params.has('fit') // вписать картинку целиком (для фото рук)
+  const sway = params.has('sway') // качать влево-вправо (проверка махания)
+  const draw = () => {
+    g.fillStyle = '#333'
+    g.fillRect(0, 0, 1280, 720)
+    const dx = sway ? Math.sin(performance.now() / 160) * 140 : 0
+    if (fit) {
+      const fw = (680 * img.naturalWidth) / img.naturalHeight
+      g.drawImage(img, 640 - fw / 2 + dx, 20, fw, 680)
+    } else {
+      g.drawImage(img, 640 - w / 2 + dx, 20, w, 1100)
+    }
+  }
   draw()
   setInterval(draw, 33)
   return c.captureStream(30)
@@ -30,9 +46,10 @@ let nextTrackId = 1
 export function useEmotionEngine(videoRef) {
   const [status, setStatus] = useState({ camera: 'starting', detector: 'loading', socket: 'connecting' })
   const [error, setError] = useState(null)
-  const [frame, setFrame] = useState({ faces: [], fps: 0, ms: 0, videoW: 0, videoH: 0, finetuned: false })
+  const [frame, setFrame] = useState({ faces: [], hands: [], shape: null, fps: 0, ms: 0, videoW: 0, videoH: 0, finetuned: false })
 
   const tracks = useRef([]) // [{id, box, history, stable, lastSeen}]
+  const hands = useRef([]) // [{id, cx, top, size, state, gesture, lastSeen}]
   const lastCrops = useRef(new Map()) // trackId -> Uint8Array (для сбора своих снимков)
 
   useEffect(() => {
@@ -40,6 +57,8 @@ export function useEmotionEngine(videoRef) {
     let raf = 0
     let stream = null
     let detector = null
+    let handLm = null
+    let tick = 0
     let ws = null
     let wsTimer = 0
     let everConnected = false
@@ -141,6 +160,40 @@ export function useEmotionEngine(videoRef) {
       tracks.current = next
     }
 
+    // ---------- Руки и жесты ----------
+    const updateHands = (video, now) => {
+      const W = video.videoWidth
+      const H = video.videoHeight
+      const res = handLm.detectForVideo(video, now)
+      const free = [...hands.current]
+      const next = []
+      for (const lm of res.landmarks) {
+        const pts = lm.map((p) => ({ x: p.x * W, y: p.y * H }))
+        const xs = pts.map((p) => p.x)
+        const ys = pts.map((p) => p.y)
+        const minX = Math.min(...xs)
+        const maxX = Math.max(...xs)
+        const top = Math.min(...ys)
+        const size = Math.max(maxX - minX, Math.max(...ys) - top)
+        const cx = (minX + maxX) / 2
+        const cy = top + size / 2
+        let best = null
+        let bestD = Infinity
+        for (const h of free) {
+          const d = Math.hypot(h.cx - cx, h.cy - cy)
+          if (d < bestD && d < size * 1.2) { best = h; bestD = d }
+        }
+        if (best) free.splice(free.indexOf(best), 1)
+        else best = { id: nextTrackId++, state: newHandState(), gesture: null }
+        Object.assign(best, { cx, cy, top, size, lastSeen: now })
+        best.gesture = updateGesture(best.state, { pts, cx, size }, now)
+        best.shape = rpsShape(best.state)
+        next.push(best)
+      }
+      for (const h of free) if (now - h.lastSeen < 300) next.push(h)
+      hands.current = next
+    }
+
     // ---------- Главный цикл ----------
     const loop = () => {
       if (cancelled) return
@@ -148,6 +201,7 @@ export function useEmotionEngine(videoRef) {
       const video = videoRef.current
       if (!video || video.readyState < 2 || !detector) return
       const now = performance.now()
+      if (handLm && tick++ % HAND_EVERY === 0) updateHands(video, now)
       const res = detector.detectForVideo(video, now)
       const boxes = res.detections
         .map((d) => d.boundingBox)
@@ -172,7 +226,7 @@ export function useEmotionEngine(videoRef) {
           const ids = inflight
           const t0 = performance.now()
           predictLocal(buf)
-            .then((probs) => { ms = +(performance.now() - t0).toFixed(2); applyProbs(ids, probs) })
+            .then((probs) => { ms = +(performance.now() - t0).toFixed(2); finetuned = !!getCustomHead(); applyProbs(ids, probs) })
             .catch((e) => console.error(e))
             .finally(() => { inflight = null })
         } else {
@@ -188,6 +242,9 @@ export function useEmotionEngine(videoRef) {
       }
       setFrame({
         faces: tracks.current.map((t) => ({ id: t.id, box: t.box, avg: t.avg, stable: t.stable })),
+        hands: hands.current.filter((h) => h.gesture).map((h) => ({ id: h.id, cx: h.cx, top: h.top, size: h.size, gesture: h.gesture })),
+        // фигура для «камень, ножницы, бумага» — по самой крупной руке в кадре
+        shape: hands.current.reduce((a, h) => (!a || h.size > a.size ? h : a), null)?.shape ?? null,
         fps, ms, finetuned,
         videoW: video.videoWidth, videoH: video.videoHeight,
       })
@@ -222,6 +279,18 @@ export function useEmotionEngine(videoRef) {
         if (cancelled) return detector.close()
         setStatus((s) => ({ ...s, detector: 'ready' }))
         loop()
+        // Жесты — дополнение: если модель руки не загрузилась, эмоции продолжают работать
+        HandLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: '/mediapipe/hand_landmarker.task', delegate: 'CPU' },
+          runningMode: 'VIDEO', numHands: MAX_HANDS,
+        }).then((h) => {
+          if (cancelled) return h.close()
+          handLm = h
+          setStatus((s) => ({ ...s, hands: 'ready' }))
+        }).catch((e) => {
+          console.warn('Модель руки не загрузилась:', e)
+          setStatus((s) => ({ ...s, hands: 'error' }))
+        })
       } catch (e) {
         setStatus((s) => ({ ...s, detector: 'error' }))
         setError(`Не удалось загрузить детектор лиц: ${e.message}`)
@@ -235,6 +304,7 @@ export function useEmotionEngine(videoRef) {
       if (ws) { ws.onclose = null; ws.close() }
       stream?.getTracks().forEach((t) => t.stop())
       detector?.close()
+      handLm?.close()
     }
   }, [videoRef])
 

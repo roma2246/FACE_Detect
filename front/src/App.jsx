@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { CLASSES, EMOTIONS, UNKNOWN } from './lib/emotions'
+import { GESTURES, GESTURE_ORDER } from './lib/gestures'
 import { useEmotionEngine } from './lib/useEmotionEngine'
+import { useRps } from './lib/useRps'
+import { RpsCard, RpsOverlay } from './RpsGame'
 import TrainPanel from './TrainPanel'
 import ParticleBackground from './ParticleBackground'
 import ThemeToggle from './ThemeToggle'
@@ -39,7 +42,41 @@ function FaceOverlay({ face, scale, videoW, showBox }) {
   )
 }
 
-function Stage({ videoRef, engine, showBox }) {
+// Эмодзи жеста над рукой
+function HandOverlay({ hand, scale, videoW, showLabel }) {
+  const g = GESTURES[hand.gesture]
+  const size = Math.min(120, Math.max(44, hand.size * scale * 0.55))
+  const x = (videoW - hand.cx) * scale
+  const top = Math.max(4, hand.top * scale - size * 1.3)
+  return (
+    <div className="emoji-anchor hand-anchor" style={{ left: x, top, fontSize: size }}>
+      <span key={hand.gesture} className="emoji">{g.emoji}</span>
+      {showLabel && <span className="hand-label">{g.label}</span>}
+    </div>
+  )
+}
+
+function Gestures({ hands, ready }) {
+  const active = new Set(hands.map((h) => h.gesture))
+  return (
+    <section className="card">
+      <div className="card-title">
+        <h3>Жесты</h3>
+        <span className="muted small">{ready ? 'покажите рукой' : 'загрузка…'}</span>
+      </div>
+      <div className="gestures">
+        {GESTURE_ORDER.map((k) => (
+          <div key={k} className={`gesture ${active.has(k) ? 'on' : ''}`}>
+            <span className="gesture-emoji">{GESTURES[k].emoji}</span>
+            <span>{GESTURES[k].hint}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function Stage({ videoRef, engine, showBox, game }) {
   const wrapRef = useRef(null)
   const [width, setWidth] = useState(0)
   useEffect(() => {
@@ -57,6 +94,10 @@ function Stage({ videoRef, engine, showBox }) {
       {scale > 0 && frame.faces.map((f) => (
         <FaceOverlay key={f.id} face={f} scale={scale} videoW={frame.videoW} showBox={showBox} />
       ))}
+      {scale > 0 && frame.hands.map((h) => (
+        <HandOverlay key={h.id} hand={h} scale={scale} videoW={frame.videoW} showLabel={showBox} />
+      ))}
+      <RpsOverlay game={game} />
       <div className="hud">
         <span>{frame.fps} FPS</span>
         <span>{frame.ms} мс</span>
@@ -152,6 +193,7 @@ function initialTheme() {
 export default function App() {
   const videoRef = useRef(null)
   const engine = useEmotionEngine(videoRef)
+  const rps = useRps(engine.frame.shape)
   const [showBox, setShowBox] = useState(true)
   const [theme, setTheme] = useState(initialTheme)
   useEffect(() => {
@@ -186,13 +228,13 @@ export default function App() {
       </header>
 
       <section className="intro">
-        <p className="lead">Покажите эмоцию в камеру — эмодзи появится над головой.</p>
-        <p className="muted">Пять эмоций в реальном времени. Видео не покидает ваш компьютер.</p>
+        <p className="lead">Покажите эмоцию или жест в камеру — эмодзи появится над головой или рукой.</p>
+        <p className="muted">Пять эмоций и три жеста в реальном времени. Видео не покидает ваш компьютер.</p>
       </section>
 
       <main className="layout">
         <div className="left">
-          <Stage videoRef={videoRef} engine={engine} showBox={showBox} />
+          <Stage videoRef={videoRef} engine={engine} showBox={showBox} game={rps.game} />
           <div className="toolbar">
             <label className="switch">
               <input type="checkbox" checked={showBox} onChange={(e) => setShowBox(e.target.checked)} />
@@ -203,18 +245,10 @@ export default function App() {
         </div>
         <aside className="right">
           <Probabilities face={main} />
+          <Gestures hands={engine.frame.hands} ready={status.hands === 'ready'} />
+          <RpsCard rps={rps} shape={engine.frame.shape} ready={status.hands === 'ready'} />
           <SessionStats face={main} />
-          {status.mode === 'browser' ? (
-            <section className="card">
-              <h3>Свой датасет и дообучение</h3>
-              <p className="muted small" style={{ margin: '8px 0 0' }}>
-                Сейчас модель работает прямо в вашем браузере. Сбор своего датасета и дообучение доступны при локальном запуске
-                с Node-бэкендом — инструкция в README репозитория.
-              </p>
-            </section>
-          ) : (
-            <TrainPanel captureMainFace={engine.captureMainFace} hasFace={!!main} />
-          )}
+          {status.mode && <TrainPanel captureMainFace={engine.captureMainFace} hasFace={!!main} mode={status.mode} />}
         </aside>
       </main>
       <footer className="muted small footer">
