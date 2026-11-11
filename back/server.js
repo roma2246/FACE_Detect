@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import * as ort from 'onnxruntime-node';
 
@@ -103,28 +104,49 @@ app.post('/api/model/reset', async (_req, res) => {
   res.json(modelInfo);
 });
 
-function sampleStats() {
-  const stats = {};
+// Имя файла: <человек>__<id записи>_<номер кадра>.png
+function listSamples() {
+  const rows = []
   for (const c of CLASSES) {
     const dir = path.join(CUSTOM, c);
-    stats[c] = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.png')).length : 0;
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.png')) continue;
+      const person = f.includes('__') ? f.split('__')[0] : 'unknown';
+      rows.push({ file: `${c}/${f}`, label: c, person, session: f.replace(/_\d+\.png$/, '') });
+    }
   }
-  return stats;
+  return rows;
 }
+
+function sampleStats() {
+  const rows = listSamples();
+  const classes = Object.fromEntries(CLASSES.map((c) => [c, 0]));
+  const people = {};
+  for (const r of rows) {
+    classes[r.label]++;
+    people[r.person] = (people[r.person] || 0) + 1;
+  }
+  return { classes, people, total: rows.length, sessions: new Set(rows.map((r) => r.session)).size };
+}
+
+// Только буквы/цифры (в т.ч. кириллица), чтобы имя было безопасной частью имени файла
+const cleanPerson = (p) => String(p || '').replace(/[^\p{L}\p{N}]/gu, '').slice(0, 24) || 'me';
 
 app.get('/api/samples', (_req, res) => res.json(sampleStats()));
 
-// { label: 'happy', images: ['data:image/png;base64,...', ...] }
+// { label: 'happy', person: 'Roma', images: ['data:image/png;base64,...', ...] }
 app.post('/api/samples', (req, res) => {
-  const { label, images } = req.body || {};
+  const { label, images, person } = req.body || {};
   if (!CLASSES.includes(label) || !Array.isArray(images)) return res.status(400).json({ error: 'bad request' });
   const dir = path.join(CUSTOM, label);
   fs.mkdirSync(dir, { recursive: true });
+  const session = `${cleanPerson(person)}__${Date.now()}`;
   let saved = 0;
-  for (const img of images.slice(0, 200)) {
+  for (const img of images.slice(0, 300)) {
     const m = /^data:image\/png;base64,(.+)$/.exec(img);
     if (!m) continue;
-    fs.writeFileSync(path.join(dir, `${Date.now()}_${saved}.png`), Buffer.from(m[1], 'base64'));
+    fs.writeFileSync(path.join(dir, `${session}_${String(saved).padStart(3, '0')}.png`), Buffer.from(m[1], 'base64'));
     saved++;
   }
   res.json({ saved, stats: sampleStats() });
@@ -133,6 +155,21 @@ app.post('/api/samples', (req, res) => {
 app.delete('/api/samples', (_req, res) => {
   fs.rmSync(CUSTOM, { recursive: true, force: true });
   res.json(sampleStats());
+});
+
+// Выгрузка собранного датасета: zip с папками по эмоциям и labels.csv (file,label,person,session)
+app.get('/api/samples/export', (_req, res) => {
+  const rows = listSamples();
+  if (!rows.length) return res.status(404).json({ error: 'Снимков пока нет' });
+  const csv = ['file,label,person,session', ...rows.map((r) => `${r.file},${r.label},${r.person},${r.session}`)].join('\n');
+  fs.writeFileSync(path.join(CUSTOM, 'labels.csv'), csv + '\n');
+  const zip = path.join(os.tmpdir(), `emocam_dataset_${Date.now()}.zip`);
+  const p = spawn(PYTHON, ['-c', 'import shutil,sys; shutil.make_archive(sys.argv[1][:-4], "zip", sys.argv[2])', zip, CUSTOM]);
+  p.on('error', () => res.status(500).json({ error: 'Не удалось запустить Python для архивации' }));
+  p.on('close', (code) => {
+    if (code !== 0) return res.status(500).json({ error: 'Не удалось создать архив' });
+    res.download(zip, 'emocam_dataset.zip', () => fs.rm(zip, { force: true }, () => {}));
+  });
 });
 
 // Дообучение запускается как дочерний Python-процесс, прогресс читаем из stdout (JSON-строки).

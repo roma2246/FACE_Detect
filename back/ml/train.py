@@ -1,4 +1,4 @@
-"""Обучение EmotionCNN на FER-2013 (5 классов) + оценка, графики, матрица ошибок, экспорт в ONNX.
+"""Обучение EmotionCNN на FER+ и RAF-DB (5 классов) + оценка, графики, матрица ошибок, экспорт в ONNX.
 
 Запуск:  .venv/bin/python train.py [--epochs 40]
 """
@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 
-from dataset import get_loaders
+from dataset import FaceDataset, get_loaders, load_tests
 from model import CLASSES, EmotionCNN
 
 matplotlib.use("Agg")
@@ -113,9 +113,9 @@ def save_reports(hist, preds, labels, prefix=""):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--epochs", type=int, default=40)
+    p.add_argument("--epochs", type=int, default=60)
     p.add_argument("--lr", type=float, default=1e-3)
-    p.add_argument("--patience", type=int, default=8)
+    p.add_argument("--patience", type=int, default=10)
     args = p.parse_args()
 
     set_seed(42)
@@ -132,8 +132,14 @@ def main():
     report = classification_report(labels, preds, target_names=CLASSES, digits=3)
     print(f"\nЛучшая val acc: {best:.3f}\nTEST accuracy: {acc:.3f}\n{report}")
     save_reports(hist, preds, labels)
+    # Точность по каждой тестовой выборке отдельно (fer2013 — старая разметка, для сравнения с прежней моделью)
+    per_set = {}
+    for name, (x, y) in load_tests().items():
+        a, _, _ = evaluate(model, torch.utils.data.DataLoader(FaceDataset(x, y), 256), device)
+        per_set[name] = float(a)
+        print(f"  {name:8s} test acc: {a:.3f}  (n={len(y)})")
     with open(os.path.join(REPORTS, "metrics.json"), "w") as f:
-        json.dump({"val_acc": float(best), "test_acc": float(acc),
+        json.dump({"val_acc": float(best), "test_acc": float(acc), "test_sets": per_set,
                    "report": classification_report(labels, preds, target_names=CLASSES, output_dict=True)},
                   f, indent=2)
     export_onnx(model, os.path.join(MODELS, "emotion_cnn.onnx"))

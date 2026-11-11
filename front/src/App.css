@@ -105,6 +105,16 @@
 .chip:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
 .chip.sel { border-color: var(--c); background: color-mix(in srgb, var(--c) 18%, transparent); }
 
+.fields { display: grid; grid-template-columns: 1fr 112px; gap: 8px; margin-bottom: 10px; }
+.input {
+  width: 100%; padding: 9px 11px; border-radius: 12px; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.05);
+  color: var(--text); font: inherit; font-size: 14px; outline: none;
+}
+.input:focus { border-color: var(--accent); }
+.input option { color: #111; }
+.dataset-line { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+.dataset-line b { color: var(--text); }
+a.link { text-decoration: none; }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .btn {
   padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.06);
