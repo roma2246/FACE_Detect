@@ -28,3 +28,4 @@ public/mediapipe/*.js
 public/mediapipe/*.wasm
 public/ort
 .vercel
+.env*
